@@ -11,6 +11,9 @@ import {
 
 const MOCK_TOOL: Tool = {
   type: "function",
+  displayTitle: "Read File",
+  readonly: true,
+  group: "filesystem",
   function: {
     name: "read_file",
     description: "Read the contents of a file at the given filepath.",
@@ -78,6 +81,9 @@ describe("toolToTextActionDefinition", () => {
   it("handles tool with no parameters gracefully", () => {
     const tool: Tool = {
       type: "function",
+      displayTitle: "Noop",
+      readonly: true,
+      group: "misc",
       function: { name: "noop", description: "Does nothing." },
     };
     const def = toolToTextActionDefinition(tool);

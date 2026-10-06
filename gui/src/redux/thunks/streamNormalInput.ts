@@ -25,7 +25,7 @@ import { modelSupportsNativeTools } from "core/llm/toolSupport";
 import { applyToolOverrides } from "core/tools/applyToolOverrides";
 import { addSystemMessageToolsToSystemMessage } from "core/tools/systemMessageTools/buildToolsSystemMessage";
 import { interceptSystemToolCalls } from "core/tools/systemMessageTools/interceptSystemToolCalls";
-import { SystemMessageToolCodeblocksFramework } from "core/tools/systemMessageTools/toolCodeblocks";
+import { resolveSystemMessageToolsFramework } from "core/tools/systemMessageTools/resolveFramework";
 
 import {
   selectCurrentToolCalls,
@@ -115,7 +115,7 @@ export const streamNormalInput = createAsyncThunk<
       ? false
       : modelSupportsNativeTools(selectedChatModel);
     const systemToolsFramework = !useNativeTools
-      ? new SystemMessageToolCodeblocksFramework()
+      ? resolveSystemMessageToolsFramework(selectedChatModel)
       : undefined;
 
     // Construct completion options

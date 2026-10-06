@@ -1255,6 +1255,11 @@ export interface ModelDescription {
 
   /** Tool overrides for this model */
   toolOverrides?: ToolOverride[];
+
+  /** Tool-calling encoding protocol for models without native function-calling support.
+   * "text_action" = SMAP v1 @action grammar (recommended for 7B–14B local models)
+   * "tool_codeblocks" = legacy ```tool codeblock grammar (default when omitted) */
+  toolProtocol?: "text_action" | "tool_codeblocks";
 }
 
 export interface JSONEmbedOptions {
@@ -1735,6 +1740,9 @@ export interface JSONModelDescription {
   useResponsesApi?: boolean;
   deploymentId?: string;
   isFromAutoDetect?: boolean;
+
+  /** @see ModelDescription.toolProtocol */
+  toolProtocol?: "text_action" | "tool_codeblocks";
 }
 
 // config.json
