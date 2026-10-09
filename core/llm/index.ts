@@ -197,6 +197,9 @@ export abstract class BaseLLM implements ILLM {
   /** Tool overrides for this model */
   toolOverrides?: ToolOverride[];
 
+  /** Protocol for tool calling — text_action forces SystemMessageTools path */
+  toolProtocol?: "text_action" | "tool_codeblocks";
+
   lastRequestId: string | undefined;
 
   private _llmOptions: LLMOptions;
@@ -300,6 +303,7 @@ export abstract class BaseLLM implements ILLM {
     this.sourceFile = options.sourceFile;
     this.isFromAutoDetect = options.isFromAutoDetect;
     this.toolOverrides = options.toolOverrides;
+    this.toolProtocol = options.toolProtocol;
   }
 
   get contextLength() {
