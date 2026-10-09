@@ -53,13 +53,15 @@ export function handleTextActionBuffer(
 
   const trimmedLine = line.replace(/\n$/, "").trimEnd();
 
-  // Blank line = end of action block
+  // Blank line = end of action block, but only if at least one arg has been seen.
+  // If no args yet, the model likely inserted a blank line between the header and
+  // the first arg (common small-model mistake) — skip it and keep parsing.
   if (!trimmedLine) {
-    state.done = true;
-    if (state.processedArgNames.size > 0) {
-      return createDelta("", "}", state.toolCallId);
+    if (state.processedArgNames.size === 0) {
+      return undefined;
     }
-    return undefined;
+    state.done = true;
+    return createDelta("", "}", state.toolCallId);
   }
 
   // Next @action = start of a new action; terminate current

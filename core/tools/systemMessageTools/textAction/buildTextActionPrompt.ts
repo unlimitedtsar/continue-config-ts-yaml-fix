@@ -44,7 +44,9 @@ Rules:
 1. One @action block per response.
 2. @action MUST be the last thing in your response. Stop immediately after the last arg line.
 3. If the task is complete without needing a tool, respond in plain prose only.
-4. Do not invent tool names — only use the tools listed below.`;
+4. Do not invent tool names — only use the tools listed below.
+5. Args MUST follow immediately after the @action line — no blank lines between @action and the first arg.
+6. Prefer semantic actions (git_status, git_log, delete_file, etc.) over run_terminal_command. Only use run_terminal_command for commands not covered by any listed tool.`;
 
 export const TEXT_ACTION_SYSTEM_SUFFIX =
   `Only use the tools listed above. Do not wrap @action in markdown code blocks.`;
