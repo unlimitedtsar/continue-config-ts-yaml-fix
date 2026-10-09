@@ -12,6 +12,7 @@ import {
   toolToTextActionDefinition,
 } from "./buildTextActionPrompt";
 import { DEFAULT_TEXT_ACTION_CONFIG, TextActionConfig } from "./types";
+import { SEMANTIC_ACTION_REGISTRY } from "./semanticActions/registry";
 
 export class TextActionFramework implements SystemMessageToolsFramework {
   private config: TextActionConfig;
@@ -71,5 +72,19 @@ export class TextActionFramework implements SystemMessageToolsFramework {
     exampleArgs: Array<[string, string | number]> = [],
   ): string {
     return createTextActionExampleCall(toolName, prefix, exampleArgs);
+  }
+
+  getExtraToolDefinitions(): string[] {
+    return Object.entries(SEMANTIC_ACTION_REGISTRY).map(([name, def]) => {
+      const lines: string[] = [`@tool ${name}`, `desc: ${def.description}`];
+      for (const arg of def.args) {
+        const req = arg.required ? ", required" : "";
+        const desc = arg.description.length > 80
+          ? arg.description.slice(0, 80) + "…"
+          : arg.description;
+        lines.push(`arg: ${arg.name} (${arg.type}${req}) — ${desc}`);
+      }
+      return lines.join("\n");
+    });
   }
 }

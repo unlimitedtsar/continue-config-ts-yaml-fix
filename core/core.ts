@@ -82,6 +82,8 @@ import { NextEditProvider } from "./nextEdit/NextEditProvider";
 import type { FromCoreProtocol, ToCoreProtocol } from "./protocol";
 import { OnboardingModes } from "./protocol/core";
 import type { IMessenger, Message } from "./protocol/messenger";
+import { resolveSemanticAction } from "./tools/systemMessageTools/textAction/semanticActions/resolver";
+import { safeParseToolCallArgs } from "./tools/parseArgs";
 import { ContinueError, ContinueErrorReason } from "./util/errors";
 import { shareSession } from "./util/historyUtils";
 import { Logger } from "./util/Logger.js";
@@ -1080,6 +1082,11 @@ export class Core {
     );
 
     on("tools/preprocessArgs", async ({ data: { toolName, args } }) => {
+      // Semantic actions have no preprocessArgs — the adapter builds args deterministically.
+      if (resolveSemanticAction(toolName, args ?? {})) {
+        return { preprocessedArgs: undefined };
+      }
+
       const { config } = await this.configHandler.loadConfig();
       if (!config) {
         throw new Error("Config not loaded");
@@ -1151,6 +1158,20 @@ export class Core {
     const { config } = await this.configHandler.loadConfig();
     if (!config) {
       throw new Error("Config not loaded");
+    }
+
+    // Resolve semantic action → real tool + deterministic args
+    const semanticArgs = safeParseToolCallArgs(toolCall);
+    const resolved = resolveSemanticAction(toolCall.function.name, semanticArgs);
+    if (resolved) {
+      toolCall = {
+        ...toolCall,
+        function: {
+          ...toolCall.function,
+          name: resolved.tool,
+          arguments: JSON.stringify(resolved.toolArgs),
+        },
+      };
     }
 
     const tool = config.tools.find(

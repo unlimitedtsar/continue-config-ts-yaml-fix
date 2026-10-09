@@ -58,6 +58,18 @@ export const generateToolsSystemMessage = (
     instructions.push(framework.exampleDynamicToolCall);
   }
 
+  if (framework.getExtraToolDefinitions) {
+    const extras = framework.getExtraToolDefinitions();
+    if (extras.length > 0) {
+      instructions.push(
+        `\nAdditional semantic actions (same @action call syntax):`,
+      );
+      for (const def of extras) {
+        instructions.push(`\n${def}`);
+      }
+    }
+  }
+
   instructions.push("\n" + framework.systemMessageSuffix);
 
   instructions.push(`${closeTag(TOOL_INSTRUCTIONS_TAG)}`);

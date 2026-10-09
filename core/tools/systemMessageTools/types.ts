@@ -26,6 +26,12 @@ export interface SystemMessageToolsFramework {
     prefix: string,
     exampleArgs?: Array<[string, string | number]>,
   ): string;
+
+  /**
+   * Optional: extra tool definition blocks to append after the regular tool
+   * descriptions (e.g. semantic actions that are not in config.tools).
+   */
+  getExtraToolDefinitions?(): string[];
 }
 
 export type ToolCallParseState = {
