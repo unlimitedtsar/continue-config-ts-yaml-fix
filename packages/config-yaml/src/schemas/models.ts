@@ -196,6 +196,7 @@ const baseModelFields = {
     .record(z.string(), z.union([z.string(), z.boolean(), z.number()]))
     .optional(),
   autocompleteOptions: autocompleteOptionsSchema.optional(),
+  toolProtocol: z.enum(["text_action", "tool_codeblocks"]).optional(),
 };
 
 export const modelSchema = z.object({
