@@ -104,10 +104,12 @@ export function decodePackageIdentifier(identifier: string): PackageIdentifier {
     };
   }
   // Keep support for explicit file:// protocol
+  // Keep the full URI so registryClient can use new URL() for correct
+  // cross-platform resolution (stripping to /C:/... breaks Windows paths)
   else if (identifier.startsWith("file://")) {
     return {
       uriType: "file",
-      fileUri: identifier.substring(7),
+      fileUri: identifier,
     };
   }
   // support ~ by replacing with home directory
