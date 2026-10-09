@@ -2,34 +2,30 @@
 // Small models reliably express intent but often forget the exact registered name.
 // Resolution is O(1) map lookup — no LLM call, no fuzzy match.
 const ALIAS_MAP: Readonly<Record<string, string>> = {
-  // File read / write
+  // File read
   read: "read_file",
-  write: "write_file",
-  edit: "edit_file",
-  create: "create_file",
-  delete: "delete_file",
-  remove: "delete_file",
-  move: "move_file",
-  copy: "copy_file",
   view: "read_file",
   open: "read_file",
   cat: "read_file",
 
+  // File write / edit / create
+  edit: "edit_existing_file",
+  write: "create_new_file",
+  create: "create_new_file",
+
   // Search / navigation
   grep: "grep_search",
   search: "grep_search",
-  find: "find_files",
-  glob: "find_files",
-  ls: "list_dir",
-  list: "list_dir",
-  dir: "list_dir",
+  find: "file_glob_search",
+  glob: "file_glob_search",
 
-  // Git
-  diff: "git_diff",
-  log: "git_log",
-  status: "git_status",
-  commit: "git_commit",
-  blame: "git_blame",
+  // Directory listing — actual registered name is "ls"
+  list: "ls",
+  dir: "ls",
+  list_dir: "ls", // reverse alias in case model uses old/hallucinated name
+
+  // Diff
+  diff: "view_diff",
 
   // Shell / terminal
   run: "run_terminal_command",
