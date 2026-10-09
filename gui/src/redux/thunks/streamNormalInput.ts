@@ -113,7 +113,9 @@ export const streamNormalInput = createAsyncThunk<
     const useNativeTools = state.config.config.experimental
       ?.onlyUseSystemMessageTools
       ? false
-      : modelSupportsNativeTools(selectedChatModel);
+      : selectedChatModel?.toolProtocol === "text_action"
+        ? false // text_action always uses SystemMessageTools, never native
+        : modelSupportsNativeTools(selectedChatModel);
     const systemToolsFramework = !useNativeTools
       ? resolveSystemMessageToolsFramework(selectedChatModel)
       : undefined;
