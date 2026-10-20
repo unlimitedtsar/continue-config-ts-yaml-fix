@@ -26,6 +26,7 @@ import { applyToolOverrides } from "core/tools/applyToolOverrides";
 import { addSystemMessageToolsToSystemMessage } from "core/tools/systemMessageTools/buildToolsSystemMessage";
 import { interceptSystemToolCalls } from "core/tools/systemMessageTools/interceptSystemToolCalls";
 import { resolveSystemMessageToolsFramework } from "core/tools/systemMessageTools/resolveFramework";
+import { buildEffectiveActionManifest } from "core/tools/systemMessageTools/textAction/effectiveActionManifest";
 
 import {
   selectCurrentToolCalls,
@@ -109,6 +110,16 @@ export const streamNormalInput = createAsyncThunk<
       }
     }
 
+    const textActionManifest =
+      selectedChatModel.toolProtocol === "text_action"
+        ? buildEffectiveActionManifest({
+            tools: activeTools,
+            mode: state.session.mode,
+            toolPolicies: state.ui.toolSettings,
+          })
+        : undefined;
+    const promptTools = textActionManifest?.tools ?? activeTools;
+
     // Use the centralized selector to determine if system message tools should be used
     const useNativeTools = state.config.config.experimental
       ?.onlyUseSystemMessageTools
@@ -117,7 +128,10 @@ export const streamNormalInput = createAsyncThunk<
         ? false // text_action always uses SystemMessageTools, never native
         : modelSupportsNativeTools(selectedChatModel);
     const systemToolsFramework = !useNativeTools
-      ? resolveSystemMessageToolsFramework(selectedChatModel)
+      ? resolveSystemMessageToolsFramework(
+          selectedChatModel,
+          textActionManifest?.semanticActions,
+        )
       : undefined;
 
     // Construct completion options
@@ -138,14 +152,14 @@ export const streamNormalInput = createAsyncThunk<
     const baseSystemMessage = getBaseSystemMessage(
       state.session.mode,
       selectedChatModel,
-      activeTools,
+      promptTools,
     );
 
     const systemMessage = systemToolsFramework
       ? addSystemMessageToolsToSystemMessage(
           systemToolsFramework,
           baseSystemMessage,
-          activeTools,
+          promptTools,
         )
       : baseSystemMessage;
 
@@ -323,6 +337,7 @@ export const streamNormalInput = createAsyncThunk<
       activeTools,
       generatedCalls3,
       toolPolicies,
+      textActionManifest?.allowedActionNames,
     );
     const autoApprovedPolicies = policies.filter(
       ({ policy }) => policy === "allowedWithoutPermission",

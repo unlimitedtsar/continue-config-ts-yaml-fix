@@ -3,6 +3,7 @@ import { getInitialToolCallParseState, ToolCallParseState } from "../types";
 import { handleTextActionBuffer } from "./parseTextAction";
 import { TEXT_ACTION_ACCEPTED_STARTS } from "./detectTextActionStart";
 import { normalizeToolName } from "./actionNormalizer";
+import { SMAPSyntaxError } from "./types";
 
 describe("handleTextActionBuffer — SMAP v1 parser", () => {
   let state: ToolCallParseState;
@@ -38,8 +39,19 @@ describe("handleTextActionBuffer — SMAP v1 parser", () => {
   it("throws when tool name is missing", () => {
     handleTextActionBuffer("@action ", state);
     expect(() => handleTextActionBuffer("\n", state)).toThrow(
-      "SMAP v1: missing tool name after @action",
+      "SMAP v1 MISSING_ACTION_NAME: missing tool name after @action",
     );
+  });
+
+  it("throws a typed syntax error", () => {
+    handleTextActionBuffer("@action ", state);
+    try {
+      handleTextActionBuffer("\n", state);
+      throw new Error("expected SMAPSyntaxError");
+    } catch (error) {
+      expect(error).toBeInstanceOf(SMAPSyntaxError);
+      expect((error as SMAPSyntaxError).code).toBe("MISSING_ACTION_NAME");
+    }
   });
 
   // ── Single arg ───────────────────────────────────────────────────────────
@@ -97,40 +109,70 @@ describe("handleTextActionBuffer — SMAP v1 parser", () => {
 
   // ── Termination ──────────────────────────────────────────────────────────
 
-  it("sets done and emits closing brace on blank line when args present", () => {
+  it("tolerates blank lines after args without terminating the action", () => {
     simulateHeader("read_file", state);
     simulateArgLine("filepath", "src/main.ts", state);
-    // blank line
-    handleTextActionBuffer("", state);
-    const result = handleTextActionBuffer("\n", state);
-    expect(result?.function?.arguments).toBe("}");
-    expect(state.done).toBe(true);
-  });
-
-  it("sets done on blank line with no args — no closing brace emitted", () => {
-    simulateHeader("list_dir", state);
     handleTextActionBuffer("", state);
     const result = handleTextActionBuffer("\n", state);
     expect(result).toBeUndefined();
-    expect(state.done).toBe(true);
+    expect(state.done).toBe(false);
   });
 
-  it("sets done when next @action line encountered", () => {
+  it("tolerates blank lines after a no-arg action header", () => {
+    simulateHeader("git_status", state);
+    handleTextActionBuffer("", state);
+    const result = handleTextActionBuffer("\n", state);
+    expect(result).toBeUndefined();
+    expect(state.done).toBe(false);
+  });
+
+  it("rejects a second action in the same response", () => {
     simulateHeader("read_file", state);
     simulateArgLine("filepath", "src/main.ts", state);
     handleTextActionBuffer("@action write_file", state);
-    const result = handleTextActionBuffer("\n", state);
-    expect(result?.function?.arguments).toBe("}");
+    expect(() => handleTextActionBuffer("\n", state)).toThrow(
+      "SMAP v1 MULTIPLE_ACTIONS",
+    );
     expect(state.done).toBe(true);
   });
 
-  it("sets done on non-arg line (no colon)", () => {
+  it("rejects a non-argument line instead of treating it as termination", () => {
     simulateHeader("read_file", state);
     simulateArgLine("filepath", "src/main.ts", state);
     handleTextActionBuffer("no colon here", state);
-    const result = handleTextActionBuffer("\n", state);
-    expect(result?.function?.arguments).toBe("}");
+    expect(() => handleTextActionBuffer("\n", state)).toThrow(
+      "SMAP v1 MALFORMED_ARGUMENT",
+    );
     expect(state.done).toBe(true);
+  });
+
+  it("rejects duplicate argument names", () => {
+    simulateHeader("read_file", state);
+    simulateArgLine("filepath", "src/main.ts", state);
+    handleTextActionBuffer("filepath: src/other.ts", state);
+    expect(() => handleTextActionBuffer("\n", state)).toThrow(
+      'SMAP v1 DUPLICATE_ARGUMENT: duplicate argument "filepath"',
+    );
+  });
+
+  it("rejects an empty argument name", () => {
+    simulateHeader("read_file", state);
+    handleTextActionBuffer(": src/main.ts", state);
+    expect(() => handleTextActionBuffer("\n", state)).toThrow(
+      "SMAP v1 MALFORMED_ARGUMENT: argument name cannot be empty",
+    );
+  });
+
+  it("preserves colons, spaces, Unicode, globs, and Windows paths in values", () => {
+    simulateHeader("grep_search", state);
+    const result = simulateArgLine(
+      "query",
+      "TODO: kiểm tra C:\\repo\\src\\**\\*.ts",
+      state,
+    );
+    expect(result?.function?.arguments).toBe(
+      '{"query":"TODO: kiểm tra C:\\\\repo\\\\src\\\\**\\\\*.ts"',
+    );
   });
 });
 
@@ -150,10 +192,11 @@ describe("normalizeToolName", () => {
   it("maps common aliases to canonical names", () => {
     expect(normalizeToolName("read")).toBe("read_file");
     expect(normalizeToolName("grep")).toBe("grep_search");
-    expect(normalizeToolName("ls")).toBe("list_dir");
+    expect(normalizeToolName("ls")).toBe("ls");
+    expect(normalizeToolName("list_dir")).toBe("ls");
     expect(normalizeToolName("run")).toBe("run_terminal_command");
-    expect(normalizeToolName("find")).toBe("find_files");
-    expect(normalizeToolName("diff")).toBe("git_diff");
+    expect(normalizeToolName("find")).toBe("file_glob_search");
+    expect(normalizeToolName("diff")).toBe("view_diff");
   });
 
   it("is case-insensitive for alias lookup", () => {

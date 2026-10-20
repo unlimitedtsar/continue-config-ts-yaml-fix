@@ -4,6 +4,9 @@ import { generateOpenAIToolCallId } from "./systemToolUtils";
 export interface SystemMessageToolsFramework {
   acceptedToolCallStarts: [string, string][];
 
+  /** Legacy toolCodeblocks parse inside fences; TextAction must not. */
+  allowToolCallInsideCodeBlock?: boolean;
+
   toolCallStateToSystemToolCall(state: ToolCallState): string;
 
   handleToolCallBuffer(

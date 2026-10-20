@@ -11,18 +11,29 @@ import {
   TEXT_ACTION_SYSTEM_SUFFIX,
   toolToTextActionDefinition,
 } from "./buildTextActionPrompt";
-import { DEFAULT_TEXT_ACTION_CONFIG, TextActionConfig } from "./types";
+import {
+  DEFAULT_TEXT_ACTION_CONFIG,
+  SMAP_ERROR_ACTION,
+  SMAPSyntaxError,
+  TextActionConfig,
+} from "./types";
 import { SEMANTIC_ACTION_REGISTRY } from "./semanticActions/registry";
 
 export class TextActionFramework implements SystemMessageToolsFramework {
   private config: TextActionConfig;
+  private semanticActions: typeof SEMANTIC_ACTION_REGISTRY;
 
-  constructor(config: Partial<TextActionConfig> = {}) {
+  constructor(
+    config: Partial<TextActionConfig> = {},
+    semanticActions: typeof SEMANTIC_ACTION_REGISTRY = SEMANTIC_ACTION_REGISTRY,
+  ) {
     this.config = { ...DEFAULT_TEXT_ACTION_CONFIG, ...config };
+    this.semanticActions = semanticActions;
   }
 
   // Self-contained detection — does not add to any global list.
   acceptedToolCallStarts: [string, string][] = TEXT_ACTION_ACCEPTED_STARTS;
+  allowToolCallInsideCodeBlock = false;
 
   toolCallStateToSystemToolCall(state: ToolCallState): string {
     const lines = [`@action ${state.toolCall.function.name}`];
@@ -43,7 +54,27 @@ export class TextActionFramework implements SystemMessageToolsFramework {
     chunk: string,
     state: ToolCallParseState,
   ): ToolCallDelta | undefined {
-    const delta = handleTextActionBuffer(chunk, state);
+    let delta: ToolCallDelta | undefined;
+    try {
+      delta = handleTextActionBuffer(chunk, state);
+    } catch (error) {
+      if (!(error instanceof SMAPSyntaxError)) {
+        throw error;
+      }
+      state.done = true;
+      return {
+        type: "function",
+        id: state.toolCallId,
+        function: {
+          name: SMAP_ERROR_ACTION,
+          arguments: JSON.stringify({
+            code: error.code,
+            message: error.message,
+            retryable: true,
+          }),
+        },
+      };
+    }
     // Apply alias normalization when tool name is first emitted (header delta)
     if (delta?.function?.name) {
       const normalized = normalizeToolName(delta.function.name);
@@ -75,7 +106,7 @@ export class TextActionFramework implements SystemMessageToolsFramework {
   }
 
   getExtraToolDefinitions(): string[] {
-    return Object.entries(SEMANTIC_ACTION_REGISTRY).map(([name, def]) => {
+    return Object.entries(this.semanticActions).map(([name, def]) => {
       const lines: string[] = [`@tool ${name}`, `desc: ${def.description}`];
       for (const arg of def.args) {
         const req = arg.required ? ", required" : "";

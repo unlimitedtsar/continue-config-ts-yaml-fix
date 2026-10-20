@@ -1,20 +1,21 @@
 import { ToolCallDelta } from "../../..";
 import { createDelta } from "../systemToolUtils";
 import { ToolCallParseState } from "../types";
+import { SMAPSyntaxError, type SMAPSyntaxErrorCode } from "./types";
 
 /*
   SMAP v1 streaming parser — two-line format:
     @action tool_name
     arg_name: value
     arg_name2: value2
-    (blank line or EOF terminates)
+    (end-of-response terminates; blank lines are tolerated)
 
   Reuses ToolCallParseState fields:
     lineChunks[0]     — header line accumulator ("@action tool_name")
     lineChunks[1+]    — arg line accumulators ("key: value")
     currentLineIndex  — which line we are currently building
     processedArgNames — keys already emitted (for JSON prefix logic)
-    done              — set on blank-line or EOF terminator
+    done              — set only when parsing cannot continue safely
     isWithinArgStart, currentArgName, currentArgChunks — unused by this parser
 */
 export function handleTextActionBuffer(
@@ -39,38 +40,37 @@ export function handleTextActionBuffer(
     if (isNewLine) {
       const toolName = line.replace(/^@action\s+/i, "").replace(/\n$/, "").trim();
       if (!toolName) {
-        throw new Error("SMAP v1: missing tool name after @action");
+        throw syntaxError(
+          "MISSING_ACTION_NAME",
+          "missing tool name after @action",
+        );
       }
       return createDelta(toolName, "", state.toolCallId);
     }
     return undefined;
   }
 
-  // Arg lines: "key: value" or blank line terminator
+  // Arg lines: "key: value". Blank lines are tolerated because small models
+  // sometimes insert one between the action header and the first argument.
   if (!isNewLine) {
     return undefined;
   }
 
   const trimmedLine = line.replace(/\n$/, "").trimEnd();
 
-  // Blank line = end of action block, but only if at least one arg has been seen.
-  // If no args yet, the model likely inserted a blank line between the header and
-  // the first arg (common small-model mistake) — skip it and keep parsing.
+  // End-of-response is the only successful terminator. Streaming pauses and
+  // blank lines must not finalize an action.
   if (!trimmedLine) {
-    if (state.processedArgNames.size === 0) {
-      return undefined;
-    }
-    state.done = true;
-    return createDelta("", "}", state.toolCallId);
+    return undefined;
   }
 
-  // Next @action = start of a new action; terminate current
+  // SMAP v1 permits exactly one action per response.
   if (trimmedLine.toLowerCase().startsWith("@action ")) {
     state.done = true;
-    if (state.processedArgNames.size > 0) {
-      return createDelta("", "}", state.toolCallId);
-    }
-    return undefined;
+    throw syntaxError(
+      "MULTIPLE_ACTIONS",
+      "multiple @action blocks in one response",
+    );
   }
 
   return parseArgLine(trimmedLine, state);
@@ -91,19 +91,32 @@ function parseArgLine(
   } else {
     const colonIdx = line.indexOf(":");
     if (colonIdx === -1) {
-      // Not a valid arg line — treat as end of action
       state.done = true;
-      if (state.processedArgNames.size > 0) {
-        return createDelta("", "}", state.toolCallId);
-      }
-      return undefined;
+      throw syntaxError(
+        "MALFORMED_ARGUMENT",
+        `expected "key: value", received "${line}"`,
+      );
     }
     key = line.slice(0, colonIdx).trim();
     value = line.slice(colonIdx + 1).trim();
   }
 
   if (!key) {
-    return undefined;
+    state.done = true;
+    throw syntaxError("MALFORMED_ARGUMENT", "argument name cannot be empty");
+  }
+
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    state.done = true;
+    throw syntaxError(
+      "MALFORMED_ARGUMENT",
+      `invalid argument name "${key}"`,
+    );
+  }
+
+  if (state.processedArgNames.has(key)) {
+    state.done = true;
+    throw syntaxError("DUPLICATE_ARGUMENT", `duplicate argument "${key}"`);
   }
 
   return emitArg(key, value, state);
@@ -128,4 +141,8 @@ function emitArg(
   }
 
   return createDelta("", `${prefix}"${key}":${jsonValue}`, state.toolCallId);
+}
+
+function syntaxError(code: SMAPSyntaxErrorCode, message: string): Error {
+  return new SMAPSyntaxError(code, message);
 }

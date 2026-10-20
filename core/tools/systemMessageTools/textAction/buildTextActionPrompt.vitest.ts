@@ -8,6 +8,9 @@ import {
   TEXT_ACTION_SYSTEM_SUFFIX,
   toolToTextActionDefinition,
 } from "./buildTextActionPrompt";
+import { TextActionFramework } from "./TextActionFramework";
+import { SEMANTIC_ACTION_REGISTRY } from "./semanticActions/registry";
+import { generateToolsSystemMessage } from "../buildToolsSystemMessage";
 
 const MOCK_TOOL: Tool = {
   type: "function",
@@ -135,5 +138,26 @@ describe("createTextActionExampleCall", () => {
       ["lines", 10],
     ]);
     expect(result).toContain("lines: 10");
+  });
+});
+
+describe("TextActionFramework semantic exposure", () => {
+  it("renders only the semantic actions supplied by the effective manifest", () => {
+    const framework = new TextActionFramework({}, {
+      git_status: SEMANTIC_ACTION_REGISTRY.git_status,
+    });
+    const definitions = framework.getExtraToolDefinitions();
+    expect(definitions).toHaveLength(1);
+    expect(definitions[0]).toContain("@tool git_status");
+    expect(definitions[0]).not.toContain("git_commit");
+  });
+
+  it("renders a semantic-only prompt when no ordinary tools remain", () => {
+    const framework = new TextActionFramework({}, {
+      git_status: SEMANTIC_ACTION_REGISTRY.git_status,
+    });
+    const prompt = generateToolsSystemMessage([], framework);
+    expect(prompt).toContain("@tool git_status");
+    expect(prompt).toContain("<tool_use_instructions>");
   });
 });

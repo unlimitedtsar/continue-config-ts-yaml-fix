@@ -1,6 +1,8 @@
-import os from "os";
-import { shellEscape } from "./shellescape";
 import { SemanticActionDef } from "./types";
+
+function isWindowsHost(): boolean {
+  return typeof process !== "undefined" && process.platform === "win32";
+}
 
 export const SEMANTIC_ACTION_REGISTRY: Readonly<
   Record<string, SemanticActionDef>
@@ -10,9 +12,13 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
   git_status: {
     description: "Show working tree status (short format)",
     args: [],
+    policy: "allowedWithoutPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: () => "git status --short",
+      buildCommandSpec: () => ({
+        executable: "git",
+        args: ["status", "--short"],
+      }),
     },
   },
 
@@ -30,13 +36,19 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
         description: "Optional: filter to commits that touched this file",
       },
     ],
+    policy: "allowedWithoutPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: (args) => {
-        const limit = Number(args.limit) > 0 ? Number(args.limit) : 20;
-        const file =
-          args.file ? ` -- ${shellEscape(String(args.file))}` : "";
-        return `git log --oneline -${limit}${file}`;
+      buildCommandSpec: (args) => {
+        const requested = Number(args.limit);
+        const limit = Number.isFinite(requested) && requested > 0
+          ? Math.min(Math.trunc(requested), 100)
+          : 20;
+        const commandArgs = ["log", "--oneline", `-${limit}`];
+        if (args.file) {
+          commandArgs.push("--", String(args.file));
+        }
+        return { executable: "git", args: commandArgs };
       },
     },
   },
@@ -55,14 +67,18 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
         description: "If true, show staged (--cached) changes instead",
       },
     ],
+    policy: "allowedWithoutPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: (args) => {
-        const staged =
-          args.staged === true || args.staged === "true" ? " --cached" : "";
-        const file =
-          args.file ? ` -- ${shellEscape(String(args.file))}` : "";
-        return `git diff${staged}${file}`;
+      buildCommandSpec: (args) => {
+        const commandArgs = ["diff"];
+        if (args.staged === true || args.staged === "true") {
+          commandArgs.push("--cached");
+        }
+        if (args.file) {
+          commandArgs.push("--", String(args.file));
+        }
+        return { executable: "git", args: commandArgs };
       },
     },
   },
@@ -77,10 +93,13 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
         description: "Path to the file",
       },
     ],
+    policy: "allowedWithoutPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: (args) =>
-        `git blame ${shellEscape(String(args.file))}`,
+      buildCommandSpec: (args) => ({
+        executable: "git",
+        args: ["blame", "--", String(args.file)],
+      }),
     },
   },
 
@@ -94,10 +113,13 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
         description: "Commit message",
       },
     ],
+    policy: "allowedWithPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: (args) =>
-        `git commit -m ${shellEscape(String(args.message))}`,
+      buildCommandSpec: (args) => ({
+        executable: "git",
+        args: ["commit", "-m", String(args.message)],
+      }),
     },
   },
 
@@ -113,14 +135,16 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
         description: "Path to the file to delete",
       },
     ],
+    policy: "allowedWithPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: (args) => {
-        const p = shellEscape(String(args.path));
-        return os.platform() === "win32"
-          ? `Remove-Item -Force ${p}`
-          : `rm ${p}`;
-      },
+      buildCommandSpec: (args) =>
+        isWindowsHost()
+          ? {
+              executable: "Remove-Item",
+              args: ["-LiteralPath", String(args.path), "-Force"],
+            }
+          : { executable: "rm", args: ["--", String(args.path)] },
     },
   },
 
@@ -140,15 +164,24 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
         description: "Target path (new name or directory)",
       },
     ],
+    policy: "allowedWithPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: (args) => {
-        const src = shellEscape(String(args.source));
-        const dst = shellEscape(String(args.destination));
-        return os.platform() === "win32"
-          ? `Move-Item ${src} ${dst}`
-          : `mv ${src} ${dst}`;
-      },
+      buildCommandSpec: (args) =>
+        isWindowsHost()
+          ? {
+              executable: "Move-Item",
+              args: [
+                "-LiteralPath",
+                String(args.source),
+                "-Destination",
+                String(args.destination),
+              ],
+            }
+          : {
+              executable: "mv",
+              args: ["--", String(args.source), String(args.destination)],
+            },
     },
   },
 
@@ -168,15 +201,24 @@ export const SEMANTIC_ACTION_REGISTRY: Readonly<
         description: "Destination path",
       },
     ],
+    policy: "allowedWithPermission",
     adapter: {
       kind: "terminal",
-      buildCommand: (args) => {
-        const src = shellEscape(String(args.source));
-        const dst = shellEscape(String(args.destination));
-        return os.platform() === "win32"
-          ? `Copy-Item ${src} ${dst}`
-          : `cp ${src} ${dst}`;
-      },
+      buildCommandSpec: (args) =>
+        isWindowsHost()
+          ? {
+              executable: "Copy-Item",
+              args: [
+                "-LiteralPath",
+                String(args.source),
+                "-Destination",
+                String(args.destination),
+              ],
+            }
+          : {
+              executable: "cp",
+              args: ["--", String(args.source), String(args.destination)],
+            },
     },
   },
 };

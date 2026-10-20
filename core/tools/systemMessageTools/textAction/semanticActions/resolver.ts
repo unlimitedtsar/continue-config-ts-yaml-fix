@@ -1,4 +1,5 @@
 import { SEMANTIC_ACTION_REGISTRY } from "./registry";
+import { renderCommandSpec } from "./shellescape";
 
 export type ResolvedAction = {
   /** Canonical Continue tool name to dispatch (e.g. "run_terminal_command") */
@@ -25,7 +26,7 @@ export function resolveSemanticAction(
     return {
       tool: "run_terminal_command",
       toolArgs: {
-        command: adapter.buildCommand(args),
+        command: renderCommandSpec(adapter.buildCommandSpec(args)),
         waitForCompletion: true,
       },
     };

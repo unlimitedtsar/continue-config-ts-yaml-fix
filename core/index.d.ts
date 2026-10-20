@@ -713,6 +713,9 @@ export interface LLMOptions {
 
   /** Tool overrides for this model */
   toolOverrides?: ToolOverride[];
+
+  /** @see ModelDescription.toolProtocol */
+  toolProtocol?: "text_action" | "tool_codeblocks";
 }
 
 type RequireAtLeastOne<T, Keys extends keyof T = keyof T> = Pick<

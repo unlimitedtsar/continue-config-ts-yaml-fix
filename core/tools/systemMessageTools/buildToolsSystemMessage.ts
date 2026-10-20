@@ -8,7 +8,8 @@ export const generateToolsSystemMessage = (
   tools: Tool[],
   framework: SystemMessageToolsFramework,
 ): string => {
-  if (tools.length === 0) {
+  const extraDefinitions = framework.getExtraToolDefinitions?.() ?? [];
+  if (tools.length === 0 && extraDefinitions.length === 0) {
     return "";
   }
   const withPredefinedMessage = tools.filter(
@@ -58,15 +59,12 @@ export const generateToolsSystemMessage = (
     instructions.push(framework.exampleDynamicToolCall);
   }
 
-  if (framework.getExtraToolDefinitions) {
-    const extras = framework.getExtraToolDefinitions();
-    if (extras.length > 0) {
-      instructions.push(
-        `\nAdditional semantic actions (same @action call syntax):`,
-      );
-      for (const def of extras) {
-        instructions.push(`\n${def}`);
-      }
+  if (extraDefinitions.length > 0) {
+    instructions.push(
+      `\nAdditional semantic actions (same @action call syntax):`,
+    );
+    for (const def of extraDefinitions) {
+      instructions.push(`\n${def}`);
     }
   }
 

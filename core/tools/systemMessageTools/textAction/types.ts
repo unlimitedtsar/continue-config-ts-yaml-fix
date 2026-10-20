@@ -3,7 +3,7 @@
 //   @action tool_name
 //   arg_name: value
 //   arg_name2: value2
-//   (blank line or EOF terminates)
+//   (end-of-response terminates; blank lines are tolerated but are not terminators)
 
 export const SMAP_ACTION_START = "@action " as const;
 
@@ -12,14 +12,36 @@ export const SMAP_ACTION_START = "@action " as const;
 export const SMAP_DEFAULT_MAX_TOOL_DESC_CHARS = 200;
 export const SMAP_DEFAULT_MAX_TOOLS_IN_PROMPT = 20;
 
-export interface ParsedSMAPAction {
+/** Syntax-level output. Tool availability/schema/policy are validated later. */
+export interface ActionCandidate {
   toolName: string;
-  args: Record<string, string>;
+  args: Record<string, string | number | boolean>;
+}
+
+/** Backward-compatible name retained while callers migrate to ActionCandidate. */
+export type ParsedSMAPAction = ActionCandidate;
+
+export type SMAPSyntaxErrorCode =
+  | "MISSING_ACTION_NAME"
+  | "MALFORMED_ARGUMENT"
+  | "DUPLICATE_ARGUMENT"
+  | "MULTIPLE_ACTIONS";
+
+export const SMAP_ERROR_ACTION = "__smap_error__" as const;
+
+export class SMAPSyntaxError extends Error {
+  constructor(
+    public readonly code: SMAPSyntaxErrorCode,
+    message: string,
+  ) {
+    super(`SMAP v1 ${code}: ${message}`);
+    this.name = "SMAPSyntaxError";
+  }
 }
 
 export interface SMAPParseResult {
-  action: ParsedSMAPAction | null;
-  error: string | null;
+  action: ActionCandidate | null;
+  error: { code: SMAPSyntaxErrorCode; message: string } | null;
 }
 
 export interface TextActionConfig {

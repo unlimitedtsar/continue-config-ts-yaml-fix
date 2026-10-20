@@ -83,6 +83,9 @@ import type { FromCoreProtocol, ToCoreProtocol } from "./protocol";
 import { OnboardingModes } from "./protocol/core";
 import type { IMessenger, Message } from "./protocol/messenger";
 import { resolveSemanticAction } from "./tools/systemMessageTools/textAction/semanticActions/resolver";
+import { SEMANTIC_ACTION_REGISTRY } from "./tools/systemMessageTools/textAction/semanticActions/registry";
+import { validateSemanticActionArgs } from "./tools/systemMessageTools/textAction/semanticActions/validate";
+import { SMAP_ERROR_ACTION } from "./tools/systemMessageTools/textAction/types";
 import { safeParseToolCallArgs } from "./tools/parseArgs";
 import { ContinueError, ContinueErrorReason } from "./util/errors";
 import { shareSession } from "./util/historyUtils";
@@ -1057,6 +1060,28 @@ export class Core {
         if (!config) {
           throw new Error("Config not loaded");
         }
+        const isTextAction =
+          config.selectedModelByRole.chat?.toolProtocol === "text_action";
+
+        // Semantic actions carry their own policy — return it directly so the
+        // GUI can auto-approve read-only actions without user confirmation.
+        const semanticDef = SEMANTIC_ACTION_REGISTRY[toolName];
+        if (isTextAction && semanticDef) {
+          return { policy: semanticDef.policy };
+        }
+
+        // Layer B enforcement: block direct run_terminal_command calls when
+        // the active model uses text_action protocol.  The model must use
+        // semantic actions (git_status, git_log, …) instead.
+        if (toolName === "run_terminal_command") {
+          if (isTextAction) {
+            const allowed = Object.keys(SEMANTIC_ACTION_REGISTRY).join(", ");
+            return {
+              policy: "disabled",
+              displayValue: `[ACTION_NOT_EXPOSED] Direct run_terminal_command is blocked in text_action mode. Use a semantic action instead: ${allowed}`,
+            };
+          }
+        }
 
         const tool = config.tools.find((t) => t.function.name === toolName);
         if (!tool) {
@@ -1065,7 +1090,7 @@ export class Core {
 
         // Extract display value for specific tools
         let displayValue: string | undefined;
-        if (toolName === "runTerminalCommand" && parsedArgs.command) {
+        if (toolName === "run_terminal_command" && parsedArgs.command) {
           displayValue = parsedArgs.command as string;
         }
 
@@ -1082,19 +1107,44 @@ export class Core {
     );
 
     on("tools/preprocessArgs", async ({ data: { toolName, args } }) => {
-      // Semantic actions have no preprocessArgs — the adapter builds args deterministically.
-      if (resolveSemanticAction(toolName, args ?? {})) {
-        return { preprocessedArgs: undefined };
-      }
-
       const { config } = await this.configHandler.loadConfig();
       if (!config) {
         throw new Error("Config not loaded");
       }
+      const isTextAction =
+        config.selectedModelByRole.chat?.toolProtocol === "text_action";
+
+      if (isTextAction && toolName === SMAP_ERROR_ACTION) {
+        const code = String(args?.code ?? "MALFORMED_ACTION");
+        const message = String(args?.message ?? "Malformed TextAction output");
+        return {
+          preprocessedArgs: undefined,
+          errorReason: ContinueErrorReason.Unspecified,
+          errorMessage: `[${code}] ${message}`,
+        };
+      }
+
+      // Semantic actions validate their public schema before an adapter is
+      // allowed to build backend arguments.
+      if (isTextAction && SEMANTIC_ACTION_REGISTRY[toolName]) {
+        const validation = validateSemanticActionArgs(toolName, args ?? {});
+        if (!validation.valid) {
+          return {
+            preprocessedArgs: undefined,
+            errorReason: ContinueErrorReason.Unspecified,
+            errorMessage: `[${validation.code}] ${validation.message}`,
+          };
+        }
+        return { preprocessedArgs: undefined };
+      }
 
       const tool = config?.tools.find((t) => t.function.name === toolName);
       if (!tool) {
-        throw new Error(`Tool ${toolName} not found`);
+        return {
+          preprocessedArgs: undefined,
+          errorReason: ContinueErrorReason.Unspecified,
+          errorMessage: `[UNKNOWN_ACTION] Tool ${toolName} not found`,
+        };
       }
 
       try {
@@ -1161,17 +1211,34 @@ export class Core {
     }
 
     // Resolve semantic action → real tool + deterministic args
-    const semanticArgs = safeParseToolCallArgs(toolCall);
-    const resolved = resolveSemanticAction(toolCall.function.name, semanticArgs);
-    if (resolved) {
-      toolCall = {
-        ...toolCall,
-        function: {
-          ...toolCall.function,
-          name: resolved.tool,
-          arguments: JSON.stringify(resolved.toolArgs),
-        },
-      };
+    if (config.selectedModelByRole.chat?.toolProtocol === "text_action") {
+      // Semantic resolution is opt-in. Native and legacy protocols retain
+      // their existing tool lookup and dispatch behavior.
+      const semanticArgs = safeParseToolCallArgs(toolCall);
+      const semanticValidation = validateSemanticActionArgs(
+        toolCall.function.name,
+        semanticArgs,
+      );
+      if (!semanticValidation.valid) {
+        throw new ContinueError(
+          ContinueErrorReason.Unspecified,
+          `[${semanticValidation.code}] ${semanticValidation.message}`,
+        );
+      }
+      const resolved = resolveSemanticAction(
+        toolCall.function.name,
+        semanticArgs,
+      );
+      if (resolved) {
+        toolCall = {
+          ...toolCall,
+          function: {
+            ...toolCall.function,
+            name: resolved.tool,
+            arguments: JSON.stringify(resolved.toolArgs),
+          },
+        };
+      }
     }
 
     const tool = config.tools.find(

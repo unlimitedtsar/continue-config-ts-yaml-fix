@@ -28,6 +28,7 @@ export async function* interceptSystemToolCalls(
 ): AsyncGenerator<ChatMessage[], PromptLog | undefined> {
   let buffer = "";
   let parseState: ToolCallParseState | undefined;
+  let isInsideCodeBlock = false;
 
   while (true) {
     const result = await messageGenerator.next();
@@ -69,7 +70,12 @@ export async function* interceptSystemToolCalls(
 
         for (const chunk of chunks) {
           buffer += chunk;
-          if (!parseState) {
+          const isCodeFence = chunk === "```";
+          const detectionAllowed =
+            systemToolFramework.allowToolCallInsideCodeBlock !== false ||
+            !isInsideCodeBlock;
+
+          if (!parseState && detectionAllowed) {
             const { isInPartialStart, isInToolCall, modifiedBuffer } =
               detectToolCallStart(buffer, systemToolFramework);
 
@@ -112,6 +118,9 @@ export async function* interceptSystemToolCalls(
             ];
           }
           buffer = "";
+          if (isCodeFence) {
+            isInsideCodeBlock = !isInsideCodeBlock;
+          }
         }
       }
     }

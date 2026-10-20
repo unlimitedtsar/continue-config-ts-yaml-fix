@@ -21,20 +21,32 @@ async function evaluateToolPolicy(
   activeTools: Tool[],
   toolCallState: ToolCallState,
   toolPolicies: ToolPolicies,
+  allowedActionNames?: ReadonlySet<string>,
 ): Promise<EvaluatedPolicy> {
+  const toolName = toolCallState.toolCall.function.name;
+
+  if (allowedActionNames && !allowedActionNames.has(toolName)) {
+    return {
+      policy: "disabled",
+      displayValue: `[ACTION_NOT_EXPOSED] Action ${toolName} was not exposed for this TextAction turn.`,
+      toolCallState,
+    };
+  }
+
   // allow edit tool calls without permission
   if (isEditTool(toolCallState.toolCall.function.name)) {
     return { policy: "allowedWithoutPermission", toolCallState };
   }
 
-  const basePolicy =
-    toolPolicies[toolCallState.toolCall.function.name] ??
-    activeTools.find(
-      (tool) => tool.function.name === toolCallState.toolCall.function.name,
-    )?.defaultToolPolicy ??
-    DEFAULT_TOOL_SETTING;
+  // Track whether basePolicy comes from an explicit user/tool setting or just
+  // the fallback default.  The leniency cap below only applies to explicit settings.
+  const userPolicy = toolPolicies[toolName];
+  const toolDefaultPolicy = activeTools.find(
+    (tool) => tool.function.name === toolName,
+  )?.defaultToolPolicy;
+  const basePolicy = userPolicy ?? toolDefaultPolicy ?? DEFAULT_TOOL_SETTING;
+  const hasExplicitPolicy = !!(userPolicy || toolDefaultPolicy);
 
-  const toolName = toolCallState.toolCall.function.name;
   const result = await ideMessenger.request("tools/evaluatePolicy", {
     toolName,
     basePolicy,
@@ -51,16 +63,18 @@ async function evaluateToolPolicy(
   const dynamicPolicy = result.content.policy;
   const displayValue = result.content.displayValue;
 
-  // Ensure dynamic policy cannot be more lenient than base policy
+  // Ensure dynamic policy cannot be more lenient than an *explicit* base policy.
   // Policy hierarchy (most restrictive to least): disabled > allowedWithPermission > allowedWithoutPermission
   if (basePolicy === "disabled") {
     return { policy: "disabled", displayValue, toolCallState }; // Cannot override disabled
   }
   if (
+    hasExplicitPolicy &&
     basePolicy === "allowedWithPermission" &&
     dynamicPolicy === "allowedWithoutPermission"
   ) {
-    return { policy: "allowedWithPermission", displayValue, toolCallState }; // Cannot make more lenient
+    // User or tool definition explicitly requires confirmation — respect it.
+    return { policy: "allowedWithPermission", displayValue, toolCallState };
   }
 
   return { policy: dynamicPolicy, displayValue, toolCallState };
@@ -77,6 +91,7 @@ export async function evaluateToolPolicies(
   activeTools: Tool[],
   generatedToolCalls: ToolCallState[],
   toolPolicies: ToolPolicies,
+  allowedActionNames?: ReadonlySet<string>,
 ): Promise<EvaluatedPolicy[]> {
   // Check if ALL tool calls are auto-approved using dynamic evaluation
   const policyResults = await Promise.all(
@@ -86,6 +101,7 @@ export async function evaluateToolPolicies(
         activeTools,
         toolCallState,
         toolPolicies,
+        allowedActionNames,
       ),
     ),
   );

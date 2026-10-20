@@ -1,3 +1,5 @@
+import type { ToolPolicy } from "@continuedev/terminal-security";
+
 export type ArgDef = {
   name: string;
   type: "string" | "number" | "boolean";
@@ -5,10 +7,17 @@ export type ArgDef = {
   description: string;
 };
 
-/** Routes the semantic action to run_terminal_command with a deterministic command string. */
+export type CommandSpec = {
+  /** Fixed executable/cmdlet chosen by code, never supplied by the model. */
+  executable: string;
+  /** Structured argv values. Rendering/escaping happens at the backend boundary. */
+  args: string[];
+};
+
+/** Routes the semantic action to a deterministic executable + argv spec. */
 export type TerminalAdapter = {
   kind: "terminal";
-  buildCommand: (args: Record<string, unknown>) => string;
+  buildCommandSpec: (args: Record<string, unknown>) => CommandSpec;
 };
 
 /** Routes the semantic action to an existing Continue tool, remapping args. */
@@ -22,4 +31,10 @@ export type SemanticActionDef = {
   description: string;
   args: ArgDef[];
   adapter: TerminalAdapter | ToolAdapter;
+  /**
+   * Controls whether the user must approve before this action runs.
+   * Read-only/safe actions: "allowedWithoutPermission"
+   * Destructive actions: "allowedWithPermission"
+   */
+  policy: ToolPolicy;
 };

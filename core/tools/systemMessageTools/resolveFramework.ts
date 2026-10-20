@@ -1,5 +1,6 @@
 import { ModelDescription } from "../..";
 import { TextActionFramework } from "./textAction/TextActionFramework";
+import type { SemanticActionDef } from "./textAction/semanticActions/types";
 import { SystemMessageToolCodeblocksFramework } from "./toolCodeblocks";
 import { SystemMessageToolsFramework } from "./types";
 
@@ -11,9 +12,10 @@ import { SystemMessageToolsFramework } from "./types";
  */
 export function resolveSystemMessageToolsFramework(
   model: Pick<ModelDescription, "toolProtocol"> | undefined,
+  semanticActions?: Readonly<Record<string, SemanticActionDef>>,
 ): SystemMessageToolsFramework {
   if (model?.toolProtocol === "text_action") {
-    return new TextActionFramework();
+    return new TextActionFramework({}, semanticActions);
   }
   return new SystemMessageToolCodeblocksFramework();
 }
