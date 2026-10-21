@@ -14,6 +14,13 @@ export interface SystemMessageToolsFramework {
     state: ToolCallParseState,
   ): ToolCallDelta | undefined;
 
+  /**
+   * Optional framework-owned end-of-response flush. TextAction uses this to
+   * finalize a pending header or final argument when providers omit a trailing
+   * newline. Legacy tool-codeblock parsing keeps the existing EOF behavior.
+   */
+  finalizeToolCall?(state: ToolCallParseState): ToolCallDelta[];
+
   toolToSystemToolDefinition: (tool: Tool) => string;
 
   systemMessagePrefix: string;

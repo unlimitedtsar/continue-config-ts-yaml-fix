@@ -1,5 +1,6 @@
 import { Tool, ToolCallDelta, ToolCallState } from "../../..";
 import { SystemMessageToolsFramework, ToolCallParseState } from "../types";
+import { createDelta } from "../systemToolUtils";
 import { TEXT_ACTION_ACCEPTED_STARTS } from "./detectTextActionStart";
 import { handleTextActionBuffer } from "./parseTextAction";
 import { normalizeToolName } from "./actionNormalizer";
@@ -86,6 +87,27 @@ export class TextActionFramework implements SystemMessageToolsFramework {
       }
     }
     return delta;
+  }
+
+  finalizeToolCall(state: ToolCallParseState): ToolCallDelta[] {
+    if (state.done) {
+      return [];
+    }
+
+    const deltas: ToolCallDelta[] = [];
+    const pendingLine = state.lineChunks[state.currentLineIndex]?.join("") ?? "";
+    if (pendingLine.length > 0) {
+      const pendingDelta = this.handleToolCallBuffer("\n", state);
+      if (pendingDelta) {
+        deltas.push(pendingDelta);
+      }
+    }
+
+    if (!state.done && state.processedArgNames.size > 0) {
+      deltas.push(createDelta("", "}", state.toolCallId));
+    }
+    state.done = true;
+    return deltas;
   }
 
   toolToSystemToolDefinition(tool: Tool): string {

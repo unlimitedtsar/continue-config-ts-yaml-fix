@@ -22,7 +22,7 @@ describe("interceptSystemToolCalls with TextAction", () => {
   };
 
   it("emits a no-argument action at end-of-response", async () => {
-    const output = await collect("@action git_status\n");
+    const output = await collect("@action git_status");
     const calls = output.flatMap((group) =>
       (group as AssistantChatMessage[]).flatMap((message) => message.toolCalls ?? []),
     );
@@ -31,10 +31,34 @@ describe("interceptSystemToolCalls with TextAction", () => {
     expect(calls[0]?.function?.arguments).toBe("");
   });
 
+  it("emits a no-argument action with a trailing newline", async () => {
+    const output = await collect("@action git_status\n");
+    const calls = output.flatMap((group) =>
+      (group as AssistantChatMessage[]).flatMap(
+        (message) => message.toolCalls ?? [],
+      ),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.function?.name).toBe("git_status");
+  });
+
   it("closes argument JSON when the response ends", async () => {
     const output = await collect(
       "@action read_file\nfilepath: src/main.ts\n",
     );
+    const args = output.flatMap((group) =>
+      (group as AssistantChatMessage[]).flatMap((message) =>
+        (message.toolCalls ?? []).map(
+          (call) => call.function?.arguments ?? "",
+        ),
+      ),
+    );
+    expect(args).toContain('{"filepath":"src/main.ts"');
+    expect(args.at(-1)).toBe("}");
+  });
+
+  it("flushes and closes a final argument without a trailing newline", async () => {
+    const output = await collect("@action read_file\nfilepath: src/main.ts");
     const args = output.flatMap((group) =>
       (group as AssistantChatMessage[]).flatMap((message) =>
         (message.toolCalls ?? []).map(

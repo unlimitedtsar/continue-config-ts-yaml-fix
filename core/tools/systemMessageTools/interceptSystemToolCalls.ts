@@ -33,15 +33,28 @@ export async function* interceptSystemToolCalls(
   while (true) {
     const result = await messageGenerator.next();
     if (result.done) {
-      // Case: non-standard tool termination causes hanging args
-      if (parseState && !parseState.done && parseState.processedArgNames.size) {
-        yield [
-          {
-            role: "assistant",
-            content: "",
-            toolCalls: [createDelta("", "}", parseState.toolCallId)],
-          },
-        ];
+      if (parseState && !parseState.done) {
+        const finalDeltas = systemToolFramework.finalizeToolCall?.(parseState);
+        if (finalDeltas) {
+          for (const delta of finalDeltas) {
+            yield [
+              {
+                role: "assistant",
+                content: "",
+                toolCalls: [delta],
+              },
+            ];
+          }
+        } else if (parseState.processedArgNames.size) {
+          // Preserve legacy handling for non-standard tool termination.
+          yield [
+            {
+              role: "assistant",
+              content: "",
+              toolCalls: [createDelta("", "}", parseState.toolCallId)],
+            },
+          ];
+        }
       }
 
       return result.value;

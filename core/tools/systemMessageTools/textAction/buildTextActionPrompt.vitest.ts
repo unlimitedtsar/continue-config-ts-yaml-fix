@@ -37,6 +37,12 @@ const MOCK_TOOL: Tool = {
   },
 };
 
+describe("TEXT_ACTION_SYSTEM_PREFIX", () => {
+  it("does not advertise raw terminal in static guidance", () => {
+    expect(TEXT_ACTION_SYSTEM_PREFIX).not.toContain("run_terminal_command");
+  });
+});
+
 describe("toolToTextActionDefinition", () => {
   it("includes tool name on first line with @tool prefix", () => {
     const def = toolToTextActionDefinition(MOCK_TOOL);
